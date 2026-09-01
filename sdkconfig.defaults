@@ -1,0 +1,8 @@
+# AI-Thinker ESP32-CAM: 4MB flash, 4MB quad SPI PSRAM used for camera frame buffers.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+CONFIG_SPIRAM=y
+
+# Camera + TLS MQTT + HTTP server no longer fit in the default 1MB app
+# partition; use the larger single-app table (no OTA, not needed here).
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y

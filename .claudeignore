@@ -1,0 +1,13 @@
+secrets.sh
+components/ca_cert/ca.crt
+components/ca_cert/ca_cert_pem.h
+
+# Прошивка (.pio/build/*/firmware.bin и т.п.) содержит WIFI_PASS/MQTT_PASS
+# как открытые строки — сборочные артефакты тоже не должны попадать в контекст.
+.pio/
+
+# Общие паттерны на случай появления других секретов/ключей.
+*.pem
+*.key
+.env
+.env.*
