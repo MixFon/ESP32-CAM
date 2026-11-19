@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "esp_err.h"
+#include "frame_publisher.h"
 #include "http_server.h"
 #include "mqtt.h"
 #include "time_sync.h"
@@ -16,6 +17,7 @@ void app_main(void)
     wifi_init_sta();
     time_sync_wait();
     mqtt_start();
+    frame_publisher_start();
 
     http_server_start();
 }

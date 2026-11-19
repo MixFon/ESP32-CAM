@@ -27,6 +27,7 @@
 
 static const char *TAG = "mqtt";
 static esp_mqtt_client_handle_t client;
+static volatile bool connected;
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
                                 int32_t event_id, void *event_data)
@@ -37,8 +38,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "Подключились к MQTT-брокеру");
         esp_mqtt_client_publish(event->client, STATUS_TOPIC, "online", 0, 1, 1);
+        connected = true;
         break;
     case MQTT_EVENT_DISCONNECTED:
+        connected = false;
         ESP_LOGW(TAG, "Отключились от MQTT-брокера, esp-mqtt переподключится сам");
         break;
     case MQTT_EVENT_ERROR:
@@ -69,6 +72,32 @@ void mqtt_start(void)
     client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
     esp_mqtt_client_start(client);
+}
+
+bool mqtt_is_connected(void)
+{
+    return connected;
+}
+
+bool mqtt_publish_binary(const char *subtopic, const uint8_t *data, size_t len)
+{
+    if (!connected) {
+        return false;
+    }
+
+    char topic[64];
+    snprintf(topic, sizeof(topic), "home/%s/%s", DEVICE_ROOM, subtopic);
+
+    // QoS 0: кадр не копируется в outbox esp-mqtt (при QoS 1 каждый JPEG
+    // дублировался бы в куче до подтверждения), а потерянный кадр не важен —
+    // следующий придёт через долю секунды. Сообщения больше выходного буфера
+    // esp-mqtt отправляет частями напрямую из data.
+    int msg_id = esp_mqtt_client_publish(client, topic, (const char *) data, (int) len, 0, 0);
+    if (msg_id < 0) {
+        ESP_LOGW(TAG, "Не удалось опубликовать %s (%u байт)", topic, (unsigned) len);
+        return false;
+    }
+    return true;
 }
 
 void mqtt_publish_metric(const char *metric, float value)

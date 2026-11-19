@@ -42,6 +42,10 @@ esp_err_t camera_start(void)
         config.jpeg_quality = 10;
         config.fb_count = 2;
         config.fb_location = CAMERA_FB_IN_PSRAM;
+        // Кадры забираются реже, чем их выдаёт сенсор (раз в ~333 мс для
+        // MQTT). В режиме WHEN_EMPTY очередь отдавала бы устаревшие кадры,
+        // LATEST всегда даёт самый свежий.
+        config.grab_mode = CAMERA_GRAB_LATEST;
     }
 
     esp_err_t err = esp_camera_init(&config);
