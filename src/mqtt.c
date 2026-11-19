@@ -79,14 +79,11 @@ bool mqtt_is_connected(void)
     return connected;
 }
 
-bool mqtt_publish_binary(const char *subtopic, const uint8_t *data, size_t len)
+bool mqtt_publish_binary(const char *topic, const uint8_t *data, size_t len)
 {
     if (!connected) {
         return false;
     }
-
-    char topic[64];
-    snprintf(topic, sizeof(topic), "home/%s/%s", DEVICE_ROOM, subtopic);
 
     // QoS 0: кадр не копируется в outbox esp-mqtt (при QoS 1 каждый JPEG
     // дублировался бы в куче до подтверждения), а потерянный кадр не важен —

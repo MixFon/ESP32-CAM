@@ -12,7 +12,10 @@
 #define FRAME_INTERVAL_MS 333
 #endif
 
-#define FRAME_SUBTOPIC "cam/frame"
+// Кадры — вне ветки home/: на home/+/... подписан iot-backend (графики
+// датчиков), бинарный поток ему не нужен. Статус устройства остаётся
+// в home/{room}/status.
+#define FRAME_TOPIC "spider/cam/frame"
 #define STATS_PERIOD_US (10 * 1000 * 1000)
 // TLS-шифрование (mbedtls) выполняется в контексте вызывающей задачи,
 // поэтому стека нужно заметно больше минимального.
@@ -42,7 +45,7 @@ static void frame_publisher_task(void *arg)
         }
 
         int64_t t0 = esp_timer_get_time();
-        bool ok = mqtt_publish_binary(FRAME_SUBTOPIC, fb->buf, fb->len);
+        bool ok = mqtt_publish_binary(FRAME_TOPIC, fb->buf, fb->len);
         int64_t t1 = esp_timer_get_time();
         size_t len = fb->len;
         esp_camera_fb_return(fb);
