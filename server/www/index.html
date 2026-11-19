@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Паук-скакунчик</title>
+  <style>
+    :root {
+      --bg: #f4f4f1;
+      --panel: #ffffff;
+      --text: #1c1c1a;
+      --muted: #6b6b66;
+      --border: #e2e2dc;
+      --ok: #2f8f4e;
+      --warn: #b7791f;
+      --bad: #c0392b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121211;
+        --panel: #1c1c1a;
+        --text: #ececea;
+        --muted: #9a9a94;
+        --border: #2c2c29;
+        --ok: #4caf6d;
+        --warn: #d69e2e;
+        --bad: #e05a4b;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { max-width: 960px; margin: 0 auto; padding: 16px; }
+    header {
+      display: flex; flex-wrap: wrap; gap: 8px 16px;
+      align-items: baseline; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: 20px; margin: 0; font-weight: 600; }
+    .stats { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 13px; }
+    .stat b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+    .dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted); margin-right: 6px; vertical-align: 1px;
+    }
+    .dot.ok { background: var(--ok); }
+    .dot.warn { background: var(--warn); }
+    .dot.bad { background: var(--bad); }
+    .frame {
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      aspect-ratio: 4 / 3;
+    }
+    .frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .frame img.stale { opacity: 0.45; }
+    .overlay {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); text-align: center; padding: 16px;
+    }
+    .overlay[hidden] { display: none; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Паук-скакунчик</h1>
+    <div class="stats">
+      <span class="stat"><span class="dot" id="conn-dot"></span>Сервер: <b id="conn">подключение…</b></span>
+      <span class="stat"><span class="dot" id="cam-dot"></span>Камера: <b id="cam">—</b></span>
+      <span class="stat">Кадр/с: <b id="fps">—</b></span>
+      <span class="stat">Последний кадр: <b id="age">—</b></span>
+    </div>
+  </header>
+
+  <div class="frame">
+    <img id="img" alt="Кадр с камеры">
+    <div class="overlay" id="overlay">Ждём первый кадр…</div>
+  </div>
+</main>
+
+<script src="config.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>
+  const FRAME_TOPIC = "spider/cam/frame";
+  const STATUS_TOPIC = "home/spider-cam/status";
+  const STALE_MS = 5000;
+
+  const $ = (id) => document.getElementById(id);
+  const img = $("img");
+  const overlay = $("overlay");
+
+  function setDot(id, state) {
+    $(id).className = "dot" + (state ? " " + state : "");
+  }
+
+  const cfg = window.SPIDER_CONFIG;
+  if (!cfg) {
+    overlay.textContent = "Нет config.js — скопируйте config.example.js в config.js и впишите пароль.";
+    throw new Error("SPIDER_CONFIG missing");
+  }
+
+  // WebSocket идёт через тот же хост и Caddy: /spider/mqtt → mosquitto:9001.
+  const wsUrl = (location.protocol === "https:" ? "wss://" : "ws://") +
+                location.host + "/spider/mqtt";
+
+  const client = mqtt.connect(wsUrl, {
+    username: cfg.username,
+    password: cfg.password,
+    clientId: "spider-web-" + Math.random().toString(16).slice(2, 10),
+    clean: true,
+    reconnectPeriod: 2000,
+  });
+
+  client.on("connect", () => {
+    $("conn").textContent = "подключено";
+    setDot("conn-dot", "ok");
+    client.subscribe([FRAME_TOPIC, STATUS_TOPIC], { qos: 0 });
+  });
+  client.on("reconnect", () => {
+    $("conn").textContent = "переподключение…";
+    setDot("conn-dot", "warn");
+  });
+  client.on("close", () => {
+    $("conn").textContent = "нет связи";
+    setDot("conn-dot", "bad");
+  });
+  client.on("error", (err) => {
+    // Неверный логин/пароль приходит сюда (Not authorized).
+    $("conn").textContent = "ошибка: " + err.message;
+    setDot("conn-dot", "bad");
+  });
+
+  let currentUrl = null;
+  let lastFrameAt = 0;
+  const frameTimes = [];
+
+  client.on("message", (topic, payload) => {
+    if (topic === STATUS_TOPIC) {
+      const status = payload.toString() || "—";
+      $("cam").textContent = status;
+      setDot("cam-dot", status === "online" ? "ok" : status === "offline" ? "bad" : "");
+      return;
+    }
+    if (topic !== FRAME_TOPIC) return;
+
+    const url = URL.createObjectURL(new Blob([payload], { type: "image/jpeg" }));
+    const prev = currentUrl;
+    currentUrl = url;
+    img.onload = () => { if (prev) URL.revokeObjectURL(prev); };
+    img.src = url;
+    overlay.hidden = true;
+
+    const now = performance.now();
+    lastFrameAt = now;
+    frameTimes.push(now);
+    while (frameTimes.length && now - frameTimes[0] > 5000) frameTimes.shift();
+  });
+
+  // Раз в полсекунды: частота кадров за последние 5 с и «свежесть» картинки.
+  setInterval(() => {
+    const now = performance.now();
+    while (frameTimes.length && now - frameTimes[0] > 5000) frameTimes.shift();
+    $("fps").textContent = frameTimes.length ? (frameTimes.length / 5).toFixed(1) : "0";
+
+    if (!lastFrameAt) return;
+    const age = now - lastFrameAt;
+    $("age").textContent = age < 1500 ? "сейчас" : Math.round(age / 1000) + " с назад";
+    img.classList.toggle("stale", age > STALE_MS);
+  }, 500);
+</script>
+</body>
+</html>

@@ -11,3 +11,6 @@ components/ca_cert/ca_cert_pem.h
 *.key
 .env
 .env.*
+
+# Пароль MQTT-пользователя страницы со стримом.
+server/www/config.js

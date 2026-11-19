@@ -7,3 +7,4 @@ secrets.sh
 components/ca_cert/ca.crt
 components/ca_cert/ca_cert_pem.h
 compile_commands.json
+server/www/config.js

@@ -1,0 +1,37 @@
+# Вставить ВНУТРЬ блока сайта в /etc/caddy/Caddyfile:
+#
+#     mrmixfon.ru {
+#         ...существующие строки...
+#         <содержимое этого файла>
+#     }
+#
+# Страница: https://mrmixfon.ru/spider/
+#
+# handle с путём /spider* — более конкретный, чем общий handle/reverse_proxy
+# на iot-backend, поэтому Caddy отдаст ему эти запросы первым.
+handle /spider* {
+	redir /spider /spider/
+
+	# route — директивы выполняются строго в записанном порядке.
+	route {
+		# WebSocket к Mosquitto (listener 9001 на localhost). До basic_auth:
+		# не все браузеры передают basic auth в WebSocket-рукопожатие. Доступ
+		# защищён логином MQTT-пользователя spider-viewer (только чтение).
+		# Caddy проксирует WebSocket сам, отдельных заголовков не нужно.
+		@mqtt path /spider/mqtt
+		reverse_proxy @mqtt 127.0.0.1:9001 {
+			rewrite /mqtt
+		}
+
+		# Страница — под паролем. Хэш: `caddy hash-password`.
+		basic_auth {
+			spider ВСТАВИТЬ_ХЭШ
+		}
+
+		# config.js с паролем MQTT не должен кэшироваться где попало.
+		header Cache-Control "no-store"
+		# /spider/index.html → /var/www/spider/index.html
+		root * /var/www
+		file_server
+	}
+}

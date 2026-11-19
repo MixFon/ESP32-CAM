@@ -1,0 +1,12 @@
+# /etc/mosquitto/acl
+
+# Устройства и iot-backend — как раньше, без ограничений.
+user iot
+topic readwrite #
+
+# Браузер на странице со стримом: только чтение кадров и статуса камеры.
+# Пароль этого пользователя лежит в config.js страницы (страница закрыта
+# basic auth в Caddy), поэтому прав у него — минимум.
+user spider-viewer
+topic read spider/cam/frame
+topic read home/spider-cam/status
