@@ -12,6 +12,15 @@ void mqtt_start(void);
 // true, пока есть активное подключение к брокеру.
 bool mqtt_is_connected(void);
 
+// Обработчик входящего сообщения. Вызывается в задаче esp-mqtt — должен быть
+// коротким и не блокировать. data не завершается нулём.
+typedef void (*mqtt_message_cb_t)(const char *data, int len);
+
+// Подписывается на topic (QoS 0) и восстанавливает подписку после каждого
+// переподключения. topic должен жить всё время работы (строковый литерал).
+// Не более 4 подписок. Возвращает false, если место кончилось.
+bool mqtt_subscribe(const char *topic, mqtt_message_cb_t cb);
+
 // Публикует home/{room}/<metric> = value (одна цифра после запятой), QoS 1.
 void mqtt_publish_metric(const char *metric, float value);
 

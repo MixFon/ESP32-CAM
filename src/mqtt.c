@@ -1,6 +1,7 @@
 #include "mqtt.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "ca_cert_pem.h"
 #include "esp_log.h"
@@ -25,9 +26,38 @@
 #define STATUS_TOPIC "home/" DEVICE_ROOM "/status"
 #define CLIENT_ID "esp32-" DEVICE_ROOM
 
+#define MAX_SUBSCRIPTIONS 4
+
 static const char *TAG = "mqtt";
 static esp_mqtt_client_handle_t client;
 static volatile bool connected;
+
+typedef struct {
+    const char *topic;
+    mqtt_message_cb_t cb;
+} subscription_t;
+
+// Заполняется до/после старта из app_main; читается в задаче esp-mqtt.
+// Запись — только добавление в конец с последующим ++count, поэтому
+// читатель никогда не видит недописанный элемент.
+static subscription_t subscriptions[MAX_SUBSCRIPTIONS];
+static volatile int subscription_count;
+
+static void dispatch_message(esp_mqtt_event_handle_t event)
+{
+    // Входящие сообщения у нас крошечные; куски длинных сообщений
+    // (current_data_offset > 0) не нужны.
+    if (event->current_data_offset != 0) {
+        return;
+    }
+    for (int i = 0; i < subscription_count; i++) {
+        const char *topic = subscriptions[i].topic;
+        if ((int) strlen(topic) == event->topic_len &&
+            memcmp(topic, event->topic, event->topic_len) == 0) {
+            subscriptions[i].cb(event->data, event->data_len);
+        }
+    }
+}
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
                                 int32_t event_id, void *event_data)
@@ -38,7 +68,14 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "Подключились к MQTT-брокеру");
         esp_mqtt_client_publish(event->client, STATUS_TOPIC, "online", 0, 1, 1);
+        // Сессия чистая — подписки после каждого (пере)подключения заново.
+        for (int i = 0; i < subscription_count; i++) {
+            esp_mqtt_client_subscribe(event->client, subscriptions[i].topic, 0);
+        }
         connected = true;
+        break;
+    case MQTT_EVENT_DATA:
+        dispatch_message(event);
         break;
     case MQTT_EVENT_DISCONNECTED:
         connected = false;
@@ -77,6 +114,22 @@ void mqtt_start(void)
 bool mqtt_is_connected(void)
 {
     return connected;
+}
+
+bool mqtt_subscribe(const char *topic, mqtt_message_cb_t cb)
+{
+    if (subscription_count >= MAX_SUBSCRIPTIONS) {
+        ESP_LOGE(TAG, "Слишком много подписок, %s не добавлена", topic);
+        return false;
+    }
+    subscriptions[subscription_count] = (subscription_t) {.topic = topic, .cb = cb};
+    subscription_count++;
+
+    // Если подключение уже есть, событие CONNECTED эту подписку не увидит.
+    if (connected) {
+        esp_mqtt_client_subscribe(client, topic, 0);
+    }
+    return true;
 }
 
 bool mqtt_publish_binary(const char *topic, const uint8_t *data, size_t len)

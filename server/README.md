@@ -8,6 +8,11 @@ ESP32-CAM ──MQTT/TLS :8883──► Mosquitto ──WS :9001 (localhost)─�
 Браузер не примет собственный CA брокера, поэтому WebSocket идёт через Caddy
 с публичным сертификатом сайта.
 
+Поток по требованию: открытая и видимая страница раз в 10 с публикует пинг в
+`spider/cam/viewer`. Пока пинги есть (последний — не старше 30 с), камера шлёт
+~3 кадра/с, иначе — 1 кадр в минуту. Поэтому `spider-viewer` в ACL может
+писать в `spider/cam/viewer`.
+
 | Файл | Куда на VPS |
 |---|---|
 | `mosquitto/spider-ws.conf` | `/etc/mosquitto/conf.d/spider-ws.conf` |

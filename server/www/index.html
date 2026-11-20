@@ -91,6 +91,10 @@
 <script>
   const FRAME_TOPIC = "spider/cam/frame";
   const STATUS_TOPIC = "home/spider-cam/status";
+  // Пока страница открыта и видна, раз в 10 с говорим камере «я смотрю».
+  // Без пингов 30 с камера переходит в режим ожидания (кадр раз в минуту).
+  const VIEWER_TOPIC = "spider/cam/viewer";
+  const VIEWER_PING_MS = 10000;
   const STALE_MS = 5000;
 
   const $ = (id) => document.getElementById(id);
@@ -119,10 +123,19 @@
     reconnectPeriod: 2000,
   });
 
+  function pingViewer() {
+    if (client.connected && document.visibilityState === "visible") {
+      client.publish(VIEWER_TOPIC, "1", { qos: 0, retain: false });
+    }
+  }
+  setInterval(pingViewer, VIEWER_PING_MS);
+  // Вернулись на вкладку — сразу будим камеру, не дожидаясь таймера.
+  document.addEventListener("visibilitychange", pingViewer);
+
   client.on("connect", () => {
     $("conn").textContent = "подключено";
     setDot("conn-dot", "ok");
-    client.subscribe([FRAME_TOPIC, STATUS_TOPIC], { qos: 0 });
+    client.subscribe([FRAME_TOPIC, STATUS_TOPIC], { qos: 0 }, pingViewer);
   });
   client.on("reconnect", () => {
     $("conn").textContent = "переподключение…";

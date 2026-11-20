@@ -5,6 +5,7 @@
 #include "frame_publisher.h"
 #include "http_server.h"
 #include "mqtt.h"
+#include "telemetry.h"
 #include "time_sync.h"
 #include "wifi.h"
 
@@ -18,6 +19,7 @@ void app_main(void)
     time_sync_wait();
     mqtt_start();
     frame_publisher_start();
+    telemetry_start();
 
     http_server_start();
 }
